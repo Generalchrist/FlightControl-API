@@ -1,10 +1,10 @@
 import json
 import asyncio
-import random
 from channels.generic.websocket import AsyncWebsocketConsumer
 from FlightControl_API.models import Command, Plane
 from asgiref.sync import sync_to_async
 from django.contrib.gis.geos import Point
+from django.db.models import F
 
 
 class PlaneConsumer(AsyncWebsocketConsumer):
@@ -75,7 +75,7 @@ class PlaneConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({"planes": plane_data}))
 
             # Sleep before next update
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
 
     async def send_commands_data(self):
         while True:
