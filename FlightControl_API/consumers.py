@@ -6,10 +6,27 @@ from FlightControl_API.models import Command, Plane
 from asgiref.sync import sync_to_async
 from django.contrib.gis.geos import Point
 
+
 class PlaneConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        # Check if the connection is for commands or planes
+        if self.scope['path'] == '/ws/commands/':
+            self.type = 'commands'
+        elif self.scope['path'] == '/ws/planes/':
+            self.type = 'planes'
+        else:
+            await self.close()
+            return
+
+        # Accept the WebSocket connection
         await self.accept()
-        self.send_data_task = asyncio.create_task(self.send_plane_data())
+
+        # Based on connection type, start corresponding task
+        if self.type == 'commands':
+            self.send_data_task = asyncio.create_task(
+                self.send_commands_data())
+        elif self.type == 'planes':
+            self.send_data_task = asyncio.create_task(self.send_plane_data())
 
     async def disconnect(self, close_code):
         if hasattr(self, 'send_data_task'):
@@ -18,12 +35,15 @@ class PlaneConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data):
         data = json.loads(text_data)
 
-        # Handle send_command type
         if data.get("type") == "send_command":
             await self.handle_send_command(data["data"])
 
+        elif data.get("type") == "command_response":
+            await self.handle_command_response(data["data"])
+
 
 # TODO: HELPERS
+
 
     async def send_plane_data(self):
         while True:
@@ -55,7 +75,34 @@ class PlaneConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({"planes": plane_data}))
 
             # Sleep before next update
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(1)
+
+    async def send_commands_data(self):
+        while True:
+            # Fetch commands and send to connected clients
+            commands = await sync_to_async(list)(
+                Command.objects.only(
+                    "id", "plane_id", "pilot_id", "message", "drop_off_location", "status", "created_at")
+            )
+            command_data = [
+                {
+                    "id": command.id,
+                    "plane_id": command.plane_id,
+                    "pilot_id": command.pilot_id,
+                    "message": command.message,
+                    "location": {
+                        "latitude": command.drop_off_location.y,
+                        "longitude": command.drop_off_location.x,
+                    },
+                    "status": command.status,
+                    "created_at": command.created_at.isoformat(),
+                }
+                for command in commands
+            ]
+
+            # Send the commands data
+            await self.send(text_data=json.dumps({"commands": command_data}))
+            await asyncio.sleep(10)
 
     async def handle_send_command(self, data):
         """
@@ -71,7 +118,8 @@ class PlaneConsumer(AsyncWebsocketConsumer):
         # Convert drop_off_location to a Point object
         latitude = drop_off_location.get("latitude")
         longitude = drop_off_location.get("longitude")
-        point = Point(longitude, latitude)  # Correct order for Point (longitude, latitude)
+        # Correct order for Point (longitude, latitude)
+        point = Point(longitude, latitude)
 
         # Create a new Command object
         command = await sync_to_async(Command.objects.create)(
@@ -97,5 +145,41 @@ class PlaneConsumer(AsyncWebsocketConsumer):
         # Send the command to the frontend
         await self.send(text_data=json.dumps({
             "type": "new_command",
+            "data": command_data
+        }))
+
+    async def handle_command_response(self, data):
+        """
+        Handle the response of the pilot to the command (accepted/rejected).
+        Update the command status and notify all clients.
+        """
+        command_id = data.get("command_id")
+        status = data.get("status")
+
+        # Ensure status is valid
+        if status not in ["accepted", "rejected"]:
+            return
+
+        # Get the command and update the status
+        command = await sync_to_async(Command.objects.get)(id=command_id)
+        command.status = status
+        await sync_to_async(command.save)()
+
+        # Prepare the updated command data
+        command_data = {
+            "plane_id": command.plane_id,
+            "pilot_id": command.pilot_id,
+            "message": command.message,
+            "drop_off_location": {
+                "latitude": command.drop_off_location.y,
+                "longitude": command.drop_off_location.x,
+            },
+            "status": command.status,
+            "created_at": command.created_at.isoformat(),
+        }
+
+        # Notify all connected clients with the updated command status
+        await self.send(text_data=json.dumps({
+            "type": "updated_command",
             "data": command_data
         }))
