@@ -54,7 +54,7 @@ class PlaneConsumer(AsyncWebsocketConsumer):
 
             plane_data = []
             for plane in planes:
-                plane.location.x += 0.05
+                plane.location.x += 0.025
 
                 # Append for WebSocket update
                 plane_data.append({
@@ -102,14 +102,13 @@ class PlaneConsumer(AsyncWebsocketConsumer):
 
             # Send the commands data
             await self.send(text_data=json.dumps({"commands": command_data}))
-            await asyncio.sleep(10)
+            await asyncio.sleep(1)
 
     async def handle_send_command(self, data):
         """
         Handle incoming command data, save to database, and notify frontend.
         """
         # Extract information from the command
-        print(data)
         plane_id = data.get("plane_id")
         pilot_id = data.get("pilot_id")
         drop_off_location = data.get("drop_off_location")
