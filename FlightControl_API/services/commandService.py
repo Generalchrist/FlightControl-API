@@ -29,7 +29,7 @@ class CommandService():
             ]
 
             await self.send(text_data=json.dumps({"commands": command_data}))
-            await asyncio.sleep(11)
+            await asyncio.sleep(1)
 
     async def handle_send_command(self, data):
         plane_id = data.get("plane_id")
