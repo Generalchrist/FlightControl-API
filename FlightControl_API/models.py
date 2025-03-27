@@ -15,7 +15,7 @@ class Command(models.Model):
     pilot_id = models.IntegerField()
     message = models.TextField()
     drop_off_location = models.PointField()
-    # e.g., 'pending', 'accepted', 'rejected'
+    # 'pending', 'accepted', 'rejected'
     status = models.CharField(max_length=20, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
 
